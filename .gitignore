@@ -1,0 +1,45 @@
+# Build
+build/
+cmake-build-*/
+out/
+compile_commands.json
+
+# vcpkg
+vcpkg_installed/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.clangd/
+.cache/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Logs & temp
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Binaries / objects
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.out

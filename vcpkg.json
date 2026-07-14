@@ -1,0 +1,13 @@
+{
+  "name": "url-shortener",
+  "version": "0.1.0",
+  "description": "A production-style URL shortener built with C++ and Drogon",
+  "dependencies": [
+    {
+      "name": "drogon",
+      "features": ["ctl", "orm", "postgres"]
+    },
+    "jwt-cpp",
+    "libpq"
+  ]
+}
