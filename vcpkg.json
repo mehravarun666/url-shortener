@@ -1,10 +1,13 @@
 {
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "url-shortener",
   "version": "0.1.0",
   "description": "A production-style URL shortener built with C++ and Drogon",
+  "builtin-baseline": "8e8dfb4ba483886936ded5ca201b500b8d8b0096",
   "dependencies": [
     {
       "name": "drogon",
+      "default-features": false,
       "features": ["ctl", "orm", "postgres"]
     },
     "jwt-cpp",
