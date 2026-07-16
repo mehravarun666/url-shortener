@@ -26,6 +26,7 @@ find_package(PostgreSQL REQUIRED)
 
 add_executable(url-shortener
     src/main.cpp
+    src/HealthController.cpp
 )
 
 target_include_directories(url-shortener PRIVATE
