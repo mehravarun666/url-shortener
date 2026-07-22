@@ -27,15 +27,33 @@ find_package(PostgreSQL REQUIRED)
 add_executable(url-shortener
     src/main.cpp
     src/HealthController.cpp
+    controllers/UrlController.cpp
+    models/Urls.cc
+    utils/ShortCodeGenerator.cpp
 )
 
 target_include_directories(url-shortener PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/controllers
+    ${CMAKE_CURRENT_SOURCE_DIR}/models
+    ${CMAKE_CURRENT_SOURCE_DIR}/utils
 )
 
 target_compile_options(url-shortener PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic>
 )
+
+# Generated Drogon models still use std::codecvt (removed from the C++17+ default libc++ API).
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
+    target_compile_definitions(url-shortener PRIVATE
+        _LIBCPP_ENABLE_CXX17_REMOVED_CODECVT
+        _LIBCPP_ENABLE_CXX26_REMOVED_CODECVT_HEADER
+        _LIBCPP_ENABLE_CXX26_REMOVED_WSTRING_CONVERT
+    )
+    set_source_files_properties(models/Urls.cc PROPERTIES
+        COMPILE_OPTIONS "-include;codecvt;-include;locale"
+    )
+endif()
 
 target_link_libraries(url-shortener PRIVATE
     Drogon::Drogon
