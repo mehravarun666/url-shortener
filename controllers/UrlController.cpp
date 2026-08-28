@@ -30,6 +30,17 @@ drogon::HttpResponsePtr UrlController::badRequest(const std::string& message)
     return resp;
 }
 
+drogon::HttpResponsePtr UrlController::notFound(const std::string& message)
+{
+    Json::Value body;
+    body["error"]["code"] = "NOT_FOUND";
+    body["error"]["message"] = message;
+
+    auto resp = drogon::HttpResponse::newHttpJsonResponse(body);
+    resp->setStatusCode(drogon::k404NotFound);
+    return resp;
+}
+
 drogon::HttpResponsePtr UrlController::serverError(const std::string& message)
 {
     Json::Value body;
@@ -138,4 +149,49 @@ void UrlController::shorten(
     }
 
     createShortUrl(url, std::move(callback));
+}
+
+void UrlController::redirect(
+    const drogon::HttpRequestPtr&,
+    std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+    const std::string& shortCode) const
+{
+    if (shortCode.empty())
+    {
+        callback(notFound("Short code not found"));
+        return;
+    }
+
+    auto db = drogon::app().getDbClient("default");
+    drogon::orm::Mapper<Urls> mapper(db);
+
+    mapper.findBy(
+        drogon::orm::Criteria(Urls::Cols::_short_code,
+                              drogon::orm::CompareOperator::EQ,
+                              shortCode),
+        [callback](const std::vector<Urls>& rows) {
+            if (rows.empty())
+            {
+                callback(notFound("Short code not found"));
+                return;
+            }
+
+            const Urls& row = rows.front();
+            const std::string destination = row.getValueOfOriginalUrl();
+            const int32_t urlId = row.getValueOfId();
+
+            auto dbClient = drogon::app().getDbClient("default");
+            *dbClient << "UPDATE urls SET click_count = click_count + 1 WHERE id = $1"
+                      << urlId
+                      >> [](const drogon::orm::Result&) {}
+                      >> [](const drogon::orm::DrogonDbException& e) {
+                             LOG_ERROR << "Failed to increment click_count: "
+                                       << e.base().what();
+                         };
+
+            callback(drogon::HttpResponse::newRedirectionResponse(destination));
+        },
+        [callback](const drogon::orm::DrogonDbException& e) {
+            callback(serverError(e.base().what()));
+        });
 }
