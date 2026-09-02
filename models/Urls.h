@@ -49,6 +49,7 @@ class Urls
         static const std::string _short_code;
         static const std::string _created_at;
         static const std::string _click_count;
+        static const std::string _expires_at;
     };
 
     static const int primaryKeyNumber;
@@ -144,8 +145,17 @@ class Urls
     void setClickCount(const int32_t &pClickCount) noexcept;
     void setClickCountToNull() noexcept;
 
+    /**  For column expires_at  */
+    ///Get the value of the column expires_at, returns the default value if the column is null
+    const ::trantor::Date &getValueOfExpiresAt() const noexcept;
+    ///Return a shared_ptr object pointing to the column const value, or an empty shared_ptr object if the column is null
+    const std::shared_ptr<::trantor::Date> &getExpiresAt() const noexcept;
+    ///Set the value of the column expires_at
+    void setExpiresAt(const ::trantor::Date &pExpiresAt) noexcept;
+    void setExpiresAtToNull() noexcept;
 
-    static size_t getColumnNumber() noexcept {  return 5;  }
+
+    static size_t getColumnNumber() noexcept {  return 6;  }
     static const std::string &getColumnName(size_t index) noexcept(false);
 
     Json::Value toJson() const;
@@ -172,6 +182,7 @@ class Urls
     std::shared_ptr<std::string> shortCode_;
     std::shared_ptr<::trantor::Date> createdAt_;
     std::shared_ptr<int32_t> clickCount_;
+    std::shared_ptr<::trantor::Date> expiresAt_;
     struct MetaData
     {
         const std::string colName_;
@@ -183,7 +194,7 @@ class Urls
         const bool notNull_;
     };
     static const std::vector<MetaData> metaData_;
-    bool dirtyFlag_[5]={ false };
+    bool dirtyFlag_[6]={ false };
   public:
     static const std::string &sqlForFindingByPrimaryKey()
     {
@@ -225,6 +236,11 @@ class Urls
         {
             needSelection=true;
         }
+        if(dirtyFlag_[5])
+        {
+            sql += "expires_at,";
+            ++parametersCount;
+        }
         needSelection=true;
         if(parametersCount > 0)
         {
@@ -265,6 +281,11 @@ class Urls
         else
         {
             sql +="default,";
+        }
+        if(dirtyFlag_[5])
+        {
+            n = snprintf(placeholderStr,sizeof(placeholderStr),"$%d,",placeholder++);
+            sql.append(placeholderStr, n);
         }
         if(parametersCount > 0)
         {
