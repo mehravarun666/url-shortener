@@ -57,6 +57,14 @@ Json::Value urlToJson(const Urls& row)
 {
     Json::Value body;
     body["id"] = row.getValueOfId();
+    if (row.getUserId())
+    {
+        body["user_id"] = *row.getUserId();
+    }
+    else
+    {
+        body["user_id"] = Json::nullValue;
+    }
     body["original_url"] = row.getValueOfOriginalUrl();
     body["short_code"] = row.getValueOfShortCode();
     body["click_count"] = row.getValueOfClickCount();
@@ -77,6 +85,11 @@ Json::Value urlToJson(const Urls& row)
         body["expires_at"] = Json::nullValue;
     }
     return body;
+}
+
+bool ownedBy(const Urls& row, int32_t userId)
+{
+    return row.getUserId() && *row.getUserId() == userId;
 }
 
 bool parseId(const std::string& raw, int32_t& out)
@@ -163,11 +176,13 @@ void UrlController::insertWithCode(
     std::string originalUrl,
     std::string shortCode,
     std::optional<trantor::Date> expiresAt,
+    int32_t userId,
     std::function<void(const drogon::HttpResponsePtr&)> callback)
 {
     Urls row;
     row.setOriginalUrl(originalUrl);
     row.setShortCode(shortCode);
+    row.setUserId(userId);
     applyExpiresAt(row, expiresAt);
 
     drogon::orm::Mapper<Urls> mapper(drogon::app().getDbClient("default"));
@@ -193,6 +208,7 @@ void UrlController::insertWithCode(
 void UrlController::createShortUrl(
     std::string originalUrl,
     std::optional<trantor::Date> expiresAt,
+    int32_t userId,
     std::function<void(const drogon::HttpResponsePtr&)> callback,
     int attempt)
 {
@@ -212,6 +228,7 @@ void UrlController::createShortUrl(
                               code),
         [originalUrl = std::move(originalUrl),
          expiresAt = std::move(expiresAt),
+         userId,
          callback = std::move(callback),
          code,
          attempt](const std::vector<Urls>& existing) mutable {
@@ -219,6 +236,7 @@ void UrlController::createShortUrl(
             {
                 createShortUrl(std::move(originalUrl),
                                std::move(expiresAt),
+                               userId,
                                std::move(callback),
                                attempt + 1);
                 return;
@@ -227,6 +245,7 @@ void UrlController::createShortUrl(
             Urls row;
             row.setOriginalUrl(originalUrl);
             row.setShortCode(code);
+            row.setUserId(userId);
             applyExpiresAt(row, expiresAt);
 
             drogon::orm::Mapper<Urls> insertMapper(
@@ -240,6 +259,7 @@ void UrlController::createShortUrl(
                 },
                 [originalUrl = std::move(originalUrl),
                  expiresAt = std::move(expiresAt),
+                 userId,
                  callback,
                  attempt](const drogon::orm::DrogonDbException& e) mutable {
                     const std::string msg = e.base().what();
@@ -248,6 +268,7 @@ void UrlController::createShortUrl(
                     {
                         createShortUrl(std::move(originalUrl),
                                        std::move(expiresAt),
+                                       userId,
                                        std::move(callback),
                                        attempt + 1);
                         return;
@@ -346,12 +367,13 @@ void UrlController::shorten(
         auto db = drogon::app().getDbClient("default");
         drogon::orm::Mapper<Urls> mapper(db);
         const std::string alias = *customAlias;
+        const int32_t userId = req->attributes()->get<int32_t>("user_id");
 
         mapper.findBy(
             drogon::orm::Criteria(Urls::Cols::_short_code,
                                   drogon::orm::CompareOperator::EQ,
                                   alias),
-            [url, alias, expiresAt = std::move(expiresAt),
+            [url, alias, expiresAt = std::move(expiresAt), userId,
              callback = std::move(callback)](
                 const std::vector<Urls>& existing) mutable {
                 if (!existing.empty())
@@ -362,6 +384,7 @@ void UrlController::shorten(
                 insertWithCode(std::move(url),
                                std::move(alias),
                                std::move(expiresAt),
+                               userId,
                                std::move(callback));
             },
             [callback = std::move(callback)](
@@ -371,7 +394,10 @@ void UrlController::shorten(
         return;
     }
 
-    createShortUrl(url, std::move(expiresAt), std::move(callback));
+    createShortUrl(url,
+                   std::move(expiresAt),
+                   req->attributes()->get<int32_t>("user_id"),
+                   std::move(callback));
 }
 
 void UrlController::listUrls(
@@ -403,12 +429,15 @@ void UrlController::listUrls(
     }
 
     const std::string q = req->getParameter("q");
-    drogon::orm::Criteria criteria;
+    const int32_t userId = req->attributes()->get<int32_t>("user_id");
+    drogon::orm::Criteria criteria(
+        Urls::Cols::_user_id, drogon::orm::CompareOperator::EQ, userId);
     if (!q.empty())
     {
-        criteria = drogon::orm::Criteria(Urls::Cols::_original_url,
-                                         drogon::orm::CompareOperator::Like,
-                                         "%" + q + "%");
+        criteria = criteria && drogon::orm::Criteria(
+                                   Urls::Cols::_original_url,
+                                   drogon::orm::CompareOperator::Like,
+                                   "%" + q + "%");
     }
 
     drogon::orm::Mapper<Urls> countMapper(drogon::app().getDbClient("default"));
@@ -445,7 +474,7 @@ void UrlController::listUrls(
 }
 
 void UrlController::getUrl(
-    const drogon::HttpRequestPtr&,
+    const drogon::HttpRequestPtr& req,
     std::function<void(const drogon::HttpResponsePtr&)>&& callback,
     const std::string& id) const
 {
@@ -457,9 +486,15 @@ void UrlController::getUrl(
     }
 
     drogon::orm::Mapper<Urls> mapper(drogon::app().getDbClient("default"));
+    const int32_t currentUserId = req->attributes()->get<int32_t>("user_id");
     mapper.findByPrimaryKey(
         urlId,
-        [callback](Urls row) {
+        [callback, currentUserId](Urls row) {
+            if (!ownedBy(row, currentUserId))
+            {
+                callback(notFound("URL not found"));
+                return;
+            }
             callback(drogon::HttpResponse::newHttpJsonResponse(urlToJson(row)));
         },
         [callback](const drogon::orm::DrogonDbException& e) {
@@ -494,10 +529,17 @@ void UrlController::updateUrl(
         return;
     }
 
+    const int32_t currentUserId = req->attributes()->get<int32_t>("user_id");
     drogon::orm::Mapper<Urls> mapper(drogon::app().getDbClient("default"));
     mapper.findByPrimaryKey(
         urlId,
-        [jsonPtr, callback = std::move(callback)](Urls row) mutable {
+        [jsonPtr, callback = std::move(callback),
+         currentUserId](Urls row) mutable {
+            if (!ownedBy(row, currentUserId))
+            {
+                callback(notFound("URL not found"));
+                return;
+            }
             if (jsonPtr->isMember("original_url"))
             {
                 if (!(*jsonPtr)["original_url"].isString())
@@ -598,7 +640,7 @@ void UrlController::updateUrl(
 }
 
 void UrlController::deleteUrl(
-    const drogon::HttpRequestPtr&,
+    const drogon::HttpRequestPtr& req,
     std::function<void(const drogon::HttpResponsePtr&)>&& callback,
     const std::string& id) const
 {
@@ -609,21 +651,44 @@ void UrlController::deleteUrl(
         return;
     }
 
+    const int32_t currentUserId = req->attributes()->get<int32_t>("user_id");
     drogon::orm::Mapper<Urls> mapper(drogon::app().getDbClient("default"));
-    mapper.deleteByPrimaryKey(
+    mapper.findByPrimaryKey(
         urlId,
-        [callback](size_t count) {
-            if (count == 0)
+        [callback = std::move(callback), currentUserId](Urls row) mutable {
+            if (!ownedBy(row, currentUserId))
             {
                 callback(notFound("URL not found"));
                 return;
             }
-            auto resp = drogon::HttpResponse::newHttpResponse();
-            resp->setStatusCode(drogon::k204NoContent);
-            callback(resp);
+            drogon::orm::Mapper<Urls> deleteMapper(
+                drogon::app().getDbClient("default"));
+            deleteMapper.deleteByPrimaryKey(
+                row.getValueOfId(),
+                [callback](size_t count) {
+                    if (count == 0)
+                    {
+                        callback(notFound("URL not found"));
+                        return;
+                    }
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setStatusCode(drogon::k204NoContent);
+                    callback(resp);
+                },
+                [callback](const drogon::orm::DrogonDbException& e) {
+                    callback(serverError(e.base().what()));
+                });
         },
         [callback](const drogon::orm::DrogonDbException& e) {
-            callback(serverError(e.base().what()));
+            const std::string msg = e.base().what();
+            if (msg.find("0 rows") != std::string::npos ||
+                msg.find("Unexpected rows") != std::string::npos ||
+                msg.find("not found") != std::string::npos)
+            {
+                callback(notFound("URL not found"));
+                return;
+            }
+            callback(serverError(msg));
         });
 }
 

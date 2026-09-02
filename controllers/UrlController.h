@@ -10,11 +10,11 @@ class UrlController : public drogon::HttpController<UrlController>
 {
   public:
     METHOD_LIST_BEGIN
-    ADD_METHOD_TO(UrlController::shorten, "/shorten", drogon::Post);
-    ADD_METHOD_TO(UrlController::listUrls, "/api/v1/urls", drogon::Get);
-    ADD_METHOD_TO(UrlController::getUrl, "/api/v1/urls/{id}", drogon::Get);
-    ADD_METHOD_TO(UrlController::updateUrl, "/api/v1/urls/{id}", drogon::Patch);
-    ADD_METHOD_TO(UrlController::deleteUrl, "/api/v1/urls/{id}", drogon::Delete);
+    ADD_METHOD_TO(UrlController::shorten, "/shorten", drogon::Post, "JwtFilter");
+    ADD_METHOD_TO(UrlController::listUrls, "/api/v1/urls", drogon::Get, "JwtFilter");
+    ADD_METHOD_TO(UrlController::getUrl, "/api/v1/urls/{id}", drogon::Get, "JwtFilter");
+    ADD_METHOD_TO(UrlController::updateUrl, "/api/v1/urls/{id}", drogon::Patch, "JwtFilter");
+    ADD_METHOD_TO(UrlController::deleteUrl, "/api/v1/urls/{id}", drogon::Delete, "JwtFilter");
     ADD_METHOD_TO(UrlController::redirect, "/{short_code}", drogon::Get);
     METHOD_LIST_END
 
@@ -47,17 +47,17 @@ class UrlController : public drogon::HttpController<UrlController>
     static drogon::HttpResponsePtr gone(const std::string& message);
     static drogon::HttpResponsePtr serverError(const std::string& message);
 
-    /// Inserts with a caller-provided short code (custom alias path).
     static void insertWithCode(
         std::string originalUrl,
         std::string shortCode,
         std::optional<trantor::Date> expiresAt,
+        int32_t userId,
         std::function<void(const drogon::HttpResponsePtr&)> callback);
 
-    /// Generates a unique short code, inserts the row, then responds with short_code.
     static void createShortUrl(
         std::string originalUrl,
         std::optional<trantor::Date> expiresAt,
+        int32_t userId,
         std::function<void(const drogon::HttpResponsePtr&)> callback,
         int attempt = 0);
 };

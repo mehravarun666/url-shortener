@@ -6,6 +6,7 @@
     "user": "varunmehra",
     "passwd": "",
     "tables": [
+        "users",
         "urls"
     ]
 }

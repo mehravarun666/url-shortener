@@ -1,0 +1,4 @@
+{
+    "jwt_secret": "dev-only-change-me",
+    "jwt_expires_seconds": 3600
+}

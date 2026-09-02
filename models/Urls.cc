@@ -6,6 +6,7 @@
  */
 
 #include "Urls.h"
+#include "Users.h"
 #include <drogon/utils/Utilities.h>
 #include <string>
 
@@ -19,6 +20,7 @@ const std::string Urls::Cols::_short_code = "\"short_code\"";
 const std::string Urls::Cols::_created_at = "\"created_at\"";
 const std::string Urls::Cols::_click_count = "\"click_count\"";
 const std::string Urls::Cols::_expires_at = "\"expires_at\"";
+const std::string Urls::Cols::_user_id = "\"user_id\"";
 const std::string Urls::primaryKeyName = "id";
 const bool Urls::hasPrimaryKey = true;
 const std::string Urls::tableName = "\"urls\"";
@@ -29,7 +31,8 @@ const std::vector<typename Urls::MetaData> Urls::metaData_={
 {"short_code","std::string","character varying",10,0,0,1},
 {"created_at","::trantor::Date","timestamp without time zone",0,0,0,0},
 {"click_count","int32_t","integer",4,0,0,0},
-{"expires_at","::trantor::Date","timestamp without time zone",0,0,0,0}
+{"expires_at","::trantor::Date","timestamp without time zone",0,0,0,0},
+{"user_id","int32_t","integer",4,0,0,0}
 };
 const std::string &Urls::getColumnName(size_t index) noexcept(false)
 {
@@ -100,11 +103,15 @@ Urls::Urls(const Row &r, const ssize_t indexOffset) noexcept
                 expiresAt_=std::make_shared<::trantor::Date>(t*1000000+decimalNum);
             }
         }
+        if(!r["user_id"].isNull())
+        {
+            userId_=std::make_shared<int32_t>(r["user_id"].as<int32_t>());
+        }
     }
     else
     {
         size_t offset = (size_t)indexOffset;
-        if(offset + 6 > r.size())
+        if(offset + 7 > r.size())
         {
             LOG_FATAL << "Invalid SQL result for this model";
             return;
@@ -176,13 +183,18 @@ Urls::Urls(const Row &r, const ssize_t indexOffset) noexcept
                 expiresAt_=std::make_shared<::trantor::Date>(t*1000000+decimalNum);
             }
         }
+        index = offset + 6;
+        if(!r[index].isNull())
+        {
+            userId_=std::make_shared<int32_t>(r[index].as<int32_t>());
+        }
     }
 
 }
 
 Urls::Urls(const Json::Value &pJson, const std::vector<std::string> &pMasqueradingVector) noexcept(false)
 {
-    if(pMasqueradingVector.size() != 6)
+    if(pMasqueradingVector.size() != 7)
     {
         LOG_ERROR << "Bad masquerading vector";
         return;
@@ -269,6 +281,14 @@ Urls::Urls(const Json::Value &pJson, const std::vector<std::string> &pMasqueradi
                 }
                 expiresAt_=std::make_shared<::trantor::Date>(t*1000000+decimalNum);
             }
+        }
+    }
+    if(!pMasqueradingVector[6].empty() && pJson.isMember(pMasqueradingVector[6]))
+    {
+        dirtyFlag_[6] = true;
+        if(!pJson[pMasqueradingVector[6]].isNull())
+        {
+            userId_=std::make_shared<int32_t>((int32_t)pJson[pMasqueradingVector[6]].asInt64());
         }
     }
 }
@@ -359,12 +379,20 @@ Urls::Urls(const Json::Value &pJson) noexcept(false)
             }
         }
     }
+    if(pJson.isMember("user_id"))
+    {
+        dirtyFlag_[6]=true;
+        if(!pJson["user_id"].isNull())
+        {
+            userId_=std::make_shared<int32_t>((int32_t)pJson["user_id"].asInt64());
+        }
+    }
 }
 
 void Urls::updateByMasqueradedJson(const Json::Value &pJson,
                                             const std::vector<std::string> &pMasqueradingVector) noexcept(false)
 {
-    if(pMasqueradingVector.size() != 6)
+    if(pMasqueradingVector.size() != 7)
     {
         LOG_ERROR << "Bad masquerading vector";
         return;
@@ -452,6 +480,14 @@ void Urls::updateByMasqueradedJson(const Json::Value &pJson,
             }
         }
     }
+    if(!pMasqueradingVector[6].empty() && pJson.isMember(pMasqueradingVector[6]))
+    {
+        dirtyFlag_[6] = true;
+        if(!pJson[pMasqueradingVector[6]].isNull())
+        {
+            userId_=std::make_shared<int32_t>((int32_t)pJson[pMasqueradingVector[6]].asInt64());
+        }
+    }
 }
 
 void Urls::updateByJson(const Json::Value &pJson) noexcept(false)
@@ -537,6 +573,14 @@ void Urls::updateByJson(const Json::Value &pJson) noexcept(false)
                 }
                 expiresAt_=std::make_shared<::trantor::Date>(t*1000000+decimalNum);
             }
+        }
+    }
+    if(pJson.isMember("user_id"))
+    {
+        dirtyFlag_[6] = true;
+        if(!pJson["user_id"].isNull())
+        {
+            userId_=std::make_shared<int32_t>((int32_t)pJson["user_id"].asInt64());
         }
     }
 }
@@ -673,6 +717,28 @@ void Urls::setExpiresAtToNull() noexcept
     dirtyFlag_[5] = true;
 }
 
+const int32_t &Urls::getValueOfUserId() const noexcept
+{
+    static const int32_t defaultValue = int32_t();
+    if(userId_)
+        return *userId_;
+    return defaultValue;
+}
+const std::shared_ptr<int32_t> &Urls::getUserId() const noexcept
+{
+    return userId_;
+}
+void Urls::setUserId(const int32_t &pUserId) noexcept
+{
+    userId_ = std::make_shared<int32_t>(pUserId);
+    dirtyFlag_[6] = true;
+}
+void Urls::setUserIdToNull() noexcept
+{
+    userId_.reset();
+    dirtyFlag_[6] = true;
+}
+
 void Urls::updateId(const uint64_t id)
 {
 }
@@ -684,7 +750,8 @@ const std::vector<std::string> &Urls::insertColumns() noexcept
         "short_code",
         "created_at",
         "click_count",
-        "expires_at"
+        "expires_at",
+        "user_id"
     };
     return inCols;
 }
@@ -746,6 +813,17 @@ void Urls::outputArgs(drogon::orm::internal::SqlBinder &binder) const
             binder << nullptr;
         }
     }
+    if(dirtyFlag_[6])
+    {
+        if(getUserId())
+        {
+            binder << getValueOfUserId();
+        }
+        else
+        {
+            binder << nullptr;
+        }
+    }
 }
 
 const std::vector<std::string> Urls::updateColumns() const
@@ -770,6 +848,10 @@ const std::vector<std::string> Urls::updateColumns() const
     if(dirtyFlag_[5])
     {
         ret.push_back(getColumnName(5));
+    }
+    if(dirtyFlag_[6])
+    {
+        ret.push_back(getColumnName(6));
     }
     return ret;
 }
@@ -831,6 +913,17 @@ void Urls::updateArgs(drogon::orm::internal::SqlBinder &binder) const
             binder << nullptr;
         }
     }
+    if(dirtyFlag_[6])
+    {
+        if(getUserId())
+        {
+            binder << getValueOfUserId();
+        }
+        else
+        {
+            binder << nullptr;
+        }
+    }
 }
 Json::Value Urls::toJson() const
 {
@@ -883,6 +976,14 @@ Json::Value Urls::toJson() const
     {
         ret["expires_at"]=Json::Value();
     }
+    if(getUserId())
+    {
+        ret["user_id"]=getValueOfUserId();
+    }
+    else
+    {
+        ret["user_id"]=Json::Value();
+    }
     return ret;
 }
 
@@ -895,7 +996,7 @@ Json::Value Urls::toMasqueradedJson(
     const std::vector<std::string> &pMasqueradingVector) const
 {
     Json::Value ret;
-    if(pMasqueradingVector.size() == 6)
+    if(pMasqueradingVector.size() == 7)
     {
         if(!pMasqueradingVector[0].empty())
         {
@@ -963,6 +1064,17 @@ Json::Value Urls::toMasqueradedJson(
                 ret[pMasqueradingVector[5]]=Json::Value();
             }
         }
+        if(!pMasqueradingVector[6].empty())
+        {
+            if(getUserId())
+            {
+                ret[pMasqueradingVector[6]]=getValueOfUserId();
+            }
+            else
+            {
+                ret[pMasqueradingVector[6]]=Json::Value();
+            }
+        }
         return ret;
     }
     LOG_ERROR << "Masquerade failed";
@@ -1014,6 +1126,14 @@ Json::Value Urls::toMasqueradedJson(
     {
         ret["expires_at"]=Json::Value();
     }
+    if(getUserId())
+    {
+        ret["user_id"]=getValueOfUserId();
+    }
+    else
+    {
+        ret["user_id"]=Json::Value();
+    }
     return ret;
 }
 
@@ -1059,13 +1179,18 @@ bool Urls::validateJsonForCreation(const Json::Value &pJson, std::string &err)
         if(!validJsonOfField(5, "expires_at", pJson["expires_at"], err, true))
             return false;
     }
+    if(pJson.isMember("user_id"))
+    {
+        if(!validJsonOfField(6, "user_id", pJson["user_id"], err, true))
+            return false;
+    }
     return true;
 }
 bool Urls::validateMasqueradedJsonForCreation(const Json::Value &pJson,
                                               const std::vector<std::string> &pMasqueradingVector,
                                               std::string &err)
 {
-    if(pMasqueradingVector.size() != 6)
+    if(pMasqueradingVector.size() != 7)
     {
         err = "Bad masquerading vector";
         return false;
@@ -1129,6 +1254,14 @@ bool Urls::validateMasqueradedJsonForCreation(const Json::Value &pJson,
                   return false;
           }
       }
+      if(!pMasqueradingVector[6].empty())
+      {
+          if(pJson.isMember(pMasqueradingVector[6]))
+          {
+              if(!validJsonOfField(6, pMasqueradingVector[6], pJson[pMasqueradingVector[6]], err, true))
+                  return false;
+          }
+      }
     }
     catch(const Json::LogicError &e)
     {
@@ -1174,13 +1307,18 @@ bool Urls::validateJsonForUpdate(const Json::Value &pJson, std::string &err)
         if(!validJsonOfField(5, "expires_at", pJson["expires_at"], err, false))
             return false;
     }
+    if(pJson.isMember("user_id"))
+    {
+        if(!validJsonOfField(6, "user_id", pJson["user_id"], err, false))
+            return false;
+    }
     return true;
 }
 bool Urls::validateMasqueradedJsonForUpdate(const Json::Value &pJson,
                                             const std::vector<std::string> &pMasqueradingVector,
                                             std::string &err)
 {
-    if(pMasqueradingVector.size() != 6)
+    if(pMasqueradingVector.size() != 7)
     {
         err = "Bad masquerading vector";
         return false;
@@ -1219,6 +1357,11 @@ bool Urls::validateMasqueradedJsonForUpdate(const Json::Value &pJson,
       if(!pMasqueradingVector[5].empty() && pJson.isMember(pMasqueradingVector[5]))
       {
           if(!validJsonOfField(5, pMasqueradingVector[5], pJson[pMasqueradingVector[5]], err, false))
+              return false;
+      }
+      if(!pMasqueradingVector[6].empty() && pJson.isMember(pMasqueradingVector[6]))
+      {
+          if(!validJsonOfField(6, pMasqueradingVector[6], pJson[pMasqueradingVector[6]], err, false))
               return false;
       }
     }
@@ -1319,9 +1462,63 @@ bool Urls::validJsonOfField(size_t index,
                 return false;
             }
             break;
+        case 6:
+            if(pJson.isNull())
+            {
+                return true;
+            }
+            if(!pJson.isInt())
+            {
+                err="Type error in the "+fieldName+" field";
+                return false;
+            }
+            break;
         default:
             err="Internal error in the server";
             return false;
     }
     return true;
+}
+Users Urls::getUsers(const DbClientPtr &clientPtr) const {
+    static const std::string sql = "select * from users where id = $1";
+    Result r(nullptr);
+    {
+        auto binder = *clientPtr << sql;
+        binder << *userId_ << Mode::Blocking >>
+            [&r](const Result &result) { r = result; };
+        binder.exec();
+    }
+    if (r.size() == 0)
+    {
+        throw UnexpectedRows("0 rows found");
+    }
+    else if (r.size() > 1)
+    {
+        throw UnexpectedRows("Found more than one row");
+    }
+    return Users(r[0]);
+}
+
+void Urls::getUsers(const DbClientPtr &clientPtr,
+                    const std::function<void(Users)> &rcb,
+                    const ExceptionCallback &ecb) const
+{
+    static const std::string sql = "select * from users where id = $1";
+    *clientPtr << sql
+               << *userId_
+               >> [rcb = std::move(rcb), ecb](const Result &r){
+                    if (r.size() == 0)
+                    {
+                        ecb(UnexpectedRows("0 rows found"));
+                    }
+                    else if (r.size() > 1)
+                    {
+                        ecb(UnexpectedRows("Found more than one row"));
+                    }
+                    else
+                    {
+                        rcb(Users(r[0]));
+                    }
+               }
+               >> ecb;
 }

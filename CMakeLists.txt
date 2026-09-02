@@ -28,13 +28,19 @@ add_executable(url-shortener
     src/main.cpp
     src/HealthController.cpp
     controllers/UrlController.cpp
+    controllers/AuthController.cpp
+    filters/JwtFilter.cpp
     models/Urls.cc
+    models/Users.cc
     utils/ShortCodeGenerator.cpp
+    utils/PasswordHasher.cpp
+    utils/JwtService.cpp
 )
 
 target_include_directories(url-shortener PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/controllers
+    ${CMAKE_CURRENT_SOURCE_DIR}/filters
     ${CMAKE_CURRENT_SOURCE_DIR}/models
     ${CMAKE_CURRENT_SOURCE_DIR}/utils
 )
@@ -50,13 +56,16 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
         _LIBCPP_ENABLE_CXX26_REMOVED_CODECVT_HEADER
         _LIBCPP_ENABLE_CXX26_REMOVED_WSTRING_CONVERT
     )
-    set_source_files_properties(models/Urls.cc PROPERTIES
+    set_source_files_properties(models/Urls.cc models/Users.cc PROPERTIES
         COMPILE_OPTIONS "-include;codecvt;-include;locale"
     )
 endif()
+
+find_package(OpenSSL REQUIRED)
 
 target_link_libraries(url-shortener PRIVATE
     Drogon::Drogon
     jwt-cpp::jwt-cpp
     PostgreSQL::PostgreSQL
+    OpenSSL::Crypto
 )
