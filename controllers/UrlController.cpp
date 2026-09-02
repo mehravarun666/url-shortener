@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <limits>
 
 using drogon_model::url_shortener::Urls;
 
@@ -49,6 +50,56 @@ void applyExpiresAt(Urls& row, const std::optional<trantor::Date>& expiresAt)
     if (expiresAt)
     {
         row.setExpiresAt(*expiresAt);
+    }
+}
+
+Json::Value urlToJson(const Urls& row)
+{
+    Json::Value body;
+    body["id"] = row.getValueOfId();
+    body["original_url"] = row.getValueOfOriginalUrl();
+    body["short_code"] = row.getValueOfShortCode();
+    body["click_count"] = row.getValueOfClickCount();
+    if (row.getCreatedAt())
+    {
+        body["created_at"] = row.getCreatedAt()->toDbString();
+    }
+    else
+    {
+        body["created_at"] = Json::nullValue;
+    }
+    if (row.getExpiresAt())
+    {
+        body["expires_at"] = row.getExpiresAt()->toDbString();
+    }
+    else
+    {
+        body["expires_at"] = Json::nullValue;
+    }
+    return body;
+}
+
+bool parseId(const std::string& raw, int32_t& out)
+{
+    if (raw.empty())
+    {
+        return false;
+    }
+    try
+    {
+        size_t idx = 0;
+        const long value = std::stol(raw, &idx);
+        if (idx != raw.size() || value <= 0 ||
+            value > static_cast<long>(std::numeric_limits<int32_t>::max()))
+        {
+            return false;
+        }
+        out = static_cast<int32_t>(value);
+        return true;
+    }
+    catch (const std::exception&)
+    {
+        return false;
     }
 }
 }  // namespace
@@ -321,6 +372,259 @@ void UrlController::shorten(
     }
 
     createShortUrl(url, std::move(expiresAt), std::move(callback));
+}
+
+void UrlController::listUrls(
+    const drogon::HttpRequestPtr& req,
+    std::function<void(const drogon::HttpResponsePtr&)>&& callback) const
+{
+    size_t page = 1;
+    size_t limit = 20;
+    try
+    {
+        if (!req->getParameter("page").empty())
+        {
+            page = static_cast<size_t>(std::stoul(req->getParameter("page")));
+        }
+        if (!req->getParameter("limit").empty())
+        {
+            limit = static_cast<size_t>(std::stoul(req->getParameter("limit")));
+        }
+    }
+    catch (const std::exception&)
+    {
+        callback(badRequest("page and limit must be positive integers"));
+        return;
+    }
+    if (page == 0 || limit == 0 || limit > 100)
+    {
+        callback(badRequest("page must be >= 1 and limit must be 1-100"));
+        return;
+    }
+
+    const std::string q = req->getParameter("q");
+    drogon::orm::Criteria criteria;
+    if (!q.empty())
+    {
+        criteria = drogon::orm::Criteria(Urls::Cols::_original_url,
+                                         drogon::orm::CompareOperator::Like,
+                                         "%" + q + "%");
+    }
+
+    drogon::orm::Mapper<Urls> countMapper(drogon::app().getDbClient("default"));
+    countMapper.count(
+        criteria,
+        [page, limit, criteria, callback = std::move(callback)](size_t total) {
+            drogon::orm::Mapper<Urls> listMapper(
+                drogon::app().getDbClient("default"));
+            listMapper.orderBy(Urls::Cols::_id, drogon::orm::SortOrder::DESC)
+                .paginate(page, limit)
+                .findBy(
+                    criteria,
+                    [total, page, limit, callback](const std::vector<Urls>& rows) {
+                        Json::Value body;
+                        body["data"] = Json::arrayValue;
+                        for (const auto& row : rows)
+                        {
+                            body["data"].append(urlToJson(row));
+                        }
+                        body["pagination"]["page"] = static_cast<Json::UInt64>(page);
+                        body["pagination"]["limit"] =
+                            static_cast<Json::UInt64>(limit);
+                        body["pagination"]["total"] =
+                            static_cast<Json::UInt64>(total);
+                        callback(drogon::HttpResponse::newHttpJsonResponse(body));
+                    },
+                    [callback](const drogon::orm::DrogonDbException& e) {
+                        callback(serverError(e.base().what()));
+                    });
+        },
+        [callback](const drogon::orm::DrogonDbException& e) {
+            callback(serverError(e.base().what()));
+        });
+}
+
+void UrlController::getUrl(
+    const drogon::HttpRequestPtr&,
+    std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+    const std::string& id) const
+{
+    int32_t urlId = 0;
+    if (!parseId(id, urlId))
+    {
+        callback(badRequest("id must be a positive integer"));
+        return;
+    }
+
+    drogon::orm::Mapper<Urls> mapper(drogon::app().getDbClient("default"));
+    mapper.findByPrimaryKey(
+        urlId,
+        [callback](Urls row) {
+            callback(drogon::HttpResponse::newHttpJsonResponse(urlToJson(row)));
+        },
+        [callback](const drogon::orm::DrogonDbException& e) {
+            const std::string msg = e.base().what();
+            if (msg.find("0 rows") != std::string::npos ||
+                msg.find("Unexpected rows") != std::string::npos ||
+                msg.find("not found") != std::string::npos)
+            {
+                callback(notFound("URL not found"));
+                return;
+            }
+            callback(serverError(msg));
+        });
+}
+
+void UrlController::updateUrl(
+    const drogon::HttpRequestPtr& req,
+    std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+    const std::string& id) const
+{
+    int32_t urlId = 0;
+    if (!parseId(id, urlId))
+    {
+        callback(badRequest("id must be a positive integer"));
+        return;
+    }
+
+    auto jsonPtr = req->getJsonObject();
+    if (!jsonPtr)
+    {
+        callback(badRequest("Malformed JSON body"));
+        return;
+    }
+
+    drogon::orm::Mapper<Urls> mapper(drogon::app().getDbClient("default"));
+    mapper.findByPrimaryKey(
+        urlId,
+        [jsonPtr, callback = std::move(callback)](Urls row) mutable {
+            if (jsonPtr->isMember("original_url"))
+            {
+                if (!(*jsonPtr)["original_url"].isString())
+                {
+                    callback(badRequest("original_url must be a string"));
+                    return;
+                }
+                const std::string original = (*jsonPtr)["original_url"].asString();
+                if (original.empty() || !startsWithHttpScheme(original))
+                {
+                    callback(badRequest(
+                        "original_url must be a non-empty http(s) URL"));
+                    return;
+                }
+                row.setOriginalUrl(original);
+            }
+
+            if (jsonPtr->isMember("custom_alias"))
+            {
+                if (!(*jsonPtr)["custom_alias"].isString())
+                {
+                    callback(badRequest("custom_alias must be a string"));
+                    return;
+                }
+                const std::string alias = (*jsonPtr)["custom_alias"].asString();
+                if (!isValidAlias(alias) || isReservedAlias(alias))
+                {
+                    callback(badRequest(
+                        "custom_alias must be 1-10 alphanumeric and not reserved"));
+                    return;
+                }
+                row.setShortCode(alias);
+            }
+
+            if (jsonPtr->isMember("expires_at"))
+            {
+                if ((*jsonPtr)["expires_at"].isNull())
+                {
+                    row.setExpiresAtToNull();
+                }
+                else if ((*jsonPtr)["expires_at"].isString())
+                {
+                    try
+                    {
+                        const auto parsed = trantor::Date::fromISOString(
+                            (*jsonPtr)["expires_at"].asString());
+                        if (parsed.microSecondsSinceEpoch() == 0 ||
+                            parsed <= trantor::Date::now())
+                        {
+                            callback(badRequest("invalid or past expires_at"));
+                            return;
+                        }
+                        row.setExpiresAt(parsed);
+                    }
+                    catch (const std::exception&)
+                    {
+                        callback(badRequest("invalid or past expires_at"));
+                        return;
+                    }
+                }
+                else
+                {
+                    callback(badRequest("expires_at must be a string or null"));
+                    return;
+                }
+            }
+
+            drogon::orm::Mapper<Urls> updateMapper(
+                drogon::app().getDbClient("default"));
+            updateMapper.update(
+                row,
+                [row, callback](size_t) {
+                    callback(
+                        drogon::HttpResponse::newHttpJsonResponse(urlToJson(row)));
+                },
+                [callback](const drogon::orm::DrogonDbException& e) {
+                    const std::string msg = e.base().what();
+                    if (msg.find("unique") != std::string::npos ||
+                        msg.find("duplicate") != std::string::npos)
+                    {
+                        callback(conflict("custom_alias is already taken"));
+                        return;
+                    }
+                    callback(serverError(msg));
+                });
+        },
+        [callback](const drogon::orm::DrogonDbException& e) {
+            const std::string msg = e.base().what();
+            if (msg.find("0 rows") != std::string::npos ||
+                msg.find("Unexpected rows") != std::string::npos ||
+                msg.find("not found") != std::string::npos)
+            {
+                callback(notFound("URL not found"));
+                return;
+            }
+            callback(serverError(msg));
+        });
+}
+
+void UrlController::deleteUrl(
+    const drogon::HttpRequestPtr&,
+    std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+    const std::string& id) const
+{
+    int32_t urlId = 0;
+    if (!parseId(id, urlId))
+    {
+        callback(badRequest("id must be a positive integer"));
+        return;
+    }
+
+    drogon::orm::Mapper<Urls> mapper(drogon::app().getDbClient("default"));
+    mapper.deleteByPrimaryKey(
+        urlId,
+        [callback](size_t count) {
+            if (count == 0)
+            {
+                callback(notFound("URL not found"));
+                return;
+            }
+            auto resp = drogon::HttpResponse::newHttpResponse();
+            resp->setStatusCode(drogon::k204NoContent);
+            callback(resp);
+        },
+        [callback](const drogon::orm::DrogonDbException& e) {
+            callback(serverError(e.base().what()));
+        });
 }
 
 void UrlController::redirect(
